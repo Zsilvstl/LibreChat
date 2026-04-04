@@ -1,6 +1,15 @@
 version: 1.3.5
 cache: true
 
+# =============================================================================
+# JARVIS LibreChat Configuration (Updated 2026-04-04)
+# Multi-model access via OpenRouter + MCP integrations
+# =============================================================================
+
+# =============================================================================
+# SPEECH — Talk to Jarvis, Jarvis talks back
+# =============================================================================
+
 speech:
   stt:
     openai:
@@ -27,17 +36,23 @@ registration:
 
 endpoints:
   custom:
+    # =========================================================================
+    # OPENROUTER — Single API key, all models
+    # =========================================================================
     - name: "OpenRouter"
       apiKey: "${OPENROUTER_KEY}"
       baseURL: "https://openrouter.ai/api/v1"
       models:
         default:
+          # --- Claude (Anthropic) ---
           - "anthropic/claude-opus-4.6"
           - "anthropic/claude-sonnet-4.6"
           - "anthropic/claude-haiku-4.5"
+          # --- GPT (OpenAI) ---
           - "openai/gpt-5.4"
           - "openai/gpt-5.4-nano"
           - "openai/gpt-5.3-codex"
+          # --- Gemini (Google) ---
           - "google/gemini-3.1-pro"
           - "google/gemini-3.1-flash-lite"
           - "google/gemini-3-flash-preview"
@@ -50,3 +65,110 @@ endpoints:
         - "stop"
         - "user"
       modelDisplayLabel: "OpenRouter"
+      iconURL: "https://openrouter.ai/favicon.ico"
+
+# =============================================================================
+# MCP SERVERS — Jarvis Tool Integration Layer
+# =============================================================================
+
+mcpServers:
+  # =========================================================================
+  # NOTION — 14 Jarvis operational databases (read/write)
+  # =========================================================================
+  notion:
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - "@notionhq/notion-mcp-server"
+    env:
+      OPENAPI_MCP_HEADERS: '{"Authorization": "Bearer ${NOTION_API_KEY}", "Notion-Version": "2022-06-28"}'
+    timeout: 30000
+    initTimeout: 15000
+    serverInstructions: >
+      Zachary's Notion workspace containing 14 Jarvis operational databases:
+      Active Priorities, Active Board, People Directory, People Tracker,
+      Arcs, Decisions, Relationship Dynamics, Succession Pipeline, Deliverables,
+      Mental Models, Capture Inbox, Quotes, Episodic Archive, and
+      Self-Leadership Learnings. Use NOTION-OPS.md patterns for database IDs
+      and queries.
+
+  # =========================================================================
+  # SUPERMEMORY — Semantic recall across sessions
+  # Container: sm_project_jarvis (78+ memories)
+  # =========================================================================
+  supermemory:
+    type: stdio
+    command: npx
+    args:
+      - -y
+      - "supermemory-mcp"
+    env:
+      SUPERMEMORY_API_KEY: "${SUPERMEMORY_API_KEY}"
+    timeout: 15000
+    initTimeout: 10000
+    serverInstructions: >
+      Semantic memory layer for Jarvis. Container: sm_project_jarvis.
+      Use recall with containerTag "sm_project_jarvis" to retrieve
+      cross-session context. Supplements Notion databases with fuzzy
+      similarity matching. Never replace canonical data — only supplement.
+      If recalled memory contradicts flat file state, trust the flat file.
+
+  # =========================================================================
+  # GOOGLE DRIVE — Vault file access (CONTEXT.md, mode files, etc.)
+  # Folder IDs:
+  #   Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
+  #   Jarvis/:    1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
+  #   Modes/:     1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
+  # =========================================================================
+  # google-drive:
+  #   type: stdio
+  #   command: npx
+  #   args:
+  #     - -y
+  #     - "google-drive-mcp"
+  #   env:
+  #     GOOGLE_OAUTH_CREDENTIALS: "${GOOGLE_OAUTH_CREDENTIALS}"
+  #   timeout: 30000
+  #   initTimeout: 15000
+  #   serverInstructions: >
+  #     Zachary's Obsidian vault (APS Interact Sync G Drive) on Google Drive.
+  #     Contains Jarvis system files (CLAUDE.md, CONTEXT.md, MODES.md,
+  #     KNOWLEDGE.md, MEMORY.md, WORKING-WITH-ME.md, MENTAL-MODELS.md,
+  #     ENGINEERING.md, Modes/*.md), planning files, and project files.
+  #     Vault root folder ID: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
+  #     Jarvis/ folder ID: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
+  #     Modes/ folder ID: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
+
+  # =========================================================================
+  # GOOGLE CALENDAR — Meeting awareness, scheduling (uncomment when ready)
+  # =========================================================================
+  # google-calendar:
+  #   type: stdio
+  #   command: npx
+  #   args:
+  #     - -y
+  #     - "@cocal/google-calendar-mcp"
+  #   env:
+  #     GOOGLE_OAUTH_CREDENTIALS: "${GOOGLE_OAUTH_CREDENTIALS}"
+  #   timeout: 30000
+  #   initTimeout: 15000
+  #   serverInstructions: >
+  #     Zachary's Google Calendar. Use for meeting awareness in /morning,
+  #     scheduling context, and 1:1 prep timing.
+
+  # =========================================================================
+  # FILESYSTEM — Direct vault access (if mounted into container)
+  # =========================================================================
+  # filesystem:
+  #   type: stdio
+  #   command: npx
+  #   args:
+  #     - -y
+  #     - "@modelcontextprotocol/server-filesystem"
+  #     - "/app/vault"
+  #   timeout: 15000
+  #   initTimeout: 10000
+  #   serverInstructions: >
+  #     Zachary's Obsidian vault mounted at /app/vault. Read-only for
+  #     context loading. Contains all Jarvis system files and planning docs.
