@@ -22,7 +22,13 @@ speech:
       url: "https://api.openai.com/v1/audio"
       apiKey: "${OPENAI_TTS_KEY}"
       model: "tts-1"
-      voice: "onyx"
+      voices:
+        - "onyx"
+        - "alloy"
+        - "echo"
+        - "fable"
+        - "nova"
+        - "shimmer"
 
 interface:
   privacyPolicy:
