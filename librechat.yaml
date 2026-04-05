@@ -105,6 +105,20 @@ mcpServers:
       Jarvis/: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
       Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
 
+  supermemory:
+    type: streamable-http
+    url: "https://mcp.supermemory.ai/mcp"
+    startup: false
+    headers:
+      Authorization: "Bearer ${SUPERMEMORY_API_KEY}"
+    timeout: 15000
+    serverInstructions: >
+      Semantic memory layer for Jarvis. Container: sm_project_jarvis.
+      Use recall with containerTag "sm_project_jarvis" to retrieve
+      cross-session context. Supplements Notion databases with fuzzy
+      similarity matching. Never replace canonical data — only supplement.
+      If recalled memory contradicts flat file state, trust the flat file.
+
   # =========================================================================
   # SUPERMEMORY — Semantic recall across sessions
   # Commented out until SSE endpoint is confirmed
