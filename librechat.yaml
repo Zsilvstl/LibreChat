@@ -94,7 +94,7 @@ mcpServers:
     initTimeout: 10000
 
   google_workspace:
-    type: sse
+    type: streamable-http
     url: "https://googleworkspacemcp-production-73bd.up.railway.app/mcp"
     startup: false
     timeout: 30000
