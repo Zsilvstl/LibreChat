@@ -93,6 +93,18 @@ mcpServers:
     timeout: 30000
     initTimeout: 10000
 
+    google_workspace:
+    type: sse
+    url: "https://googleworkspacemcp-production-73bd.up.railway.app/mcp"
+    startup: false
+    timeout: 30000
+    serverInstructions: >
+      Google Workspace tools for Drive and Calendar access.
+      Drive contains Zachary's Obsidian vault with Jarvis system files.
+      Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
+      Jarvis/: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
+      Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
+
   # =========================================================================
   # SUPERMEMORY — Semantic recall across sessions
   # Commented out until SSE endpoint is confirmed
