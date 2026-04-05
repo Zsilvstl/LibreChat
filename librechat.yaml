@@ -93,7 +93,7 @@ mcpServers:
     timeout: 30000
     initTimeout: 10000
 
-    google_workspace:
+  google_workspace:
     type: sse
     url: "https://googleworkspacemcp-production-73bd.up.railway.app/mcp"
     startup: false
