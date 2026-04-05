@@ -106,8 +106,8 @@ mcpServers:
       Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
 
   supermemory:
-    type: sse
-    url: "https://mcp.supermemory.ai/sse"
+    type: streamable-http
+    url: "https://mcp.supermemory.ai/mcp"
     startup: false
     headers:
       Authorization: "Bearer ${SUPERMEMORY_API_KEY}"
