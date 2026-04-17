@@ -10,7 +10,11 @@ cache: true
 # =============================================================================
 # SPEECH — Talk to Jarvis, Jarvis talks back
 # =============================================================================
-
+mcpSettings:
+  allowedDomains:
+    - "mcp.notion.com"
+    - "mcp.supermemory.ai"
+    - "googleworkspacemcp-production-73bd.up.railway.app"
 speech:
   stt:
     openai:
