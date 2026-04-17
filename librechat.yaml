@@ -83,7 +83,7 @@ mcpServers:
   # Uses OAuth — will prompt for Notion authorization on first use
   # =========================================================================
   notion:
-    type: streamable-http
+    type: sse
     url: "https://mcp.notion.com/sse"
     oauth:
       redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/notion/oauth/callback"
