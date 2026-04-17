@@ -106,11 +106,11 @@ mcpServers:
       Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
 
   supermemory:
-    type: sse
+    type: streamable-http
     url: "https://mcp.supermemory.ai/mcp"
     startup: false
-    headers:
-      Authorization: "Bearer ${SUPERMEMORY_API_KEY}"
+    oauth:
+      redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/supermemory/oauth/callback"
     timeout: 15000
     serverInstructions: >
       Semantic memory layer for Jarvis. Container: sm_project_jarvis.
