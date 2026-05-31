@@ -2,14 +2,27 @@ version: 1.3.5
 cache: true
 
 # =============================================================================
-# JARVIS LibreChat Configuration (Updated 2026-04-04 v3)
+# JARVIS LibreChat Configuration — CORRECTED 2026-05-31
 # Multi-model access via OpenRouter + MCP integrations
-# SSE-based MCP for Railway cloud deployment
+# Transport: streamable-http (NOT SSE — see note below)
+#
+# CHANGES vs the deployed version:
+#   1. google_workspace: removed `startup: false` so the Drive/Calendar MCP
+#      connects at app startup instead of requiring a manual per-session
+#      reconnect. This is the likely root cause of "Drive context not loading."
+#      (Code ref: ConnectionsRepository.isAllowedToConnectToServer — a server
+#       with startup:false is EXCLUDED from app-level connections.)
+#      google_workspace has no oauth: block and no user vars, so its auth is
+#      handled server-side on Railway → safe to auto-init at startup.
+#   2. Fixed the stale "SSE-based" header comment — all active servers are
+#      already streamable-http. No SSE migration is needed (that rec is moot).
+#   3. supermemory: left startup:false (it uses per-user OAuth) but annotated.
+#      It degrades silently per the skill's §10, so it is not critical-path.
+#
+# TEST AFTER DEPLOY: open a fresh session, run /jarvis, confirm the Context
+# Receipt shows "Vault canon: loaded" WITHOUT a manual MCP reconnect.
 # =============================================================================
 
-# =============================================================================
-# SPEECH — Talk to Jarvis, Jarvis talks back
-# =============================================================================
 mcpSettings:
   allowedDomains:
     - "mcp.notion.com"
@@ -45,6 +58,15 @@ registration:
   allowedDomains:
     - "gmail.com"
 
+# =============================================================================
+# MODEL ACCESS — all models route through OpenRouter (single custom endpoint).
+# FAILOVER NOTE: LibreChat has no native model-failover feature, but because
+# every model already goes through OpenRouter, provider-level outages are
+# absorbed by OpenRouter's own routing. To add explicit model-level fallback
+# (e.g., Opus -> GPT-5.4 -> Gemini), configure it on the OpenRouter side
+# (account routing preferences / request `models` array), NOT here. So the
+# "OpenAI down = LibreChat dead" failure mode is already largely mitigated.
+# =============================================================================
 endpoints:
   custom:
     - name: "OpenRouter"
@@ -73,14 +95,12 @@ endpoints:
       iconURL: "https://openrouter.ai/favicon.ico"
 
 # =============================================================================
-# MCP SERVERS — SSE-based for Railway cloud deployment
-# stdio servers don't work on Railway (multi-stage Docker build)
+# MCP SERVERS — streamable-http for Railway cloud deployment
 # =============================================================================
 
 mcpServers:
   # =========================================================================
-  # NOTION — 14 Jarvis operational databases (via Notion's hosted MCP)
-  # Uses OAuth — will prompt for Notion authorization on first use
+  # NOTION — Jarvis operational databases (Notion hosted MCP). OAuth on first use.
   # =========================================================================
   notion:
     type: streamable-http
@@ -97,18 +117,32 @@ mcpServers:
     timeout: 30000
     initTimeout: 10000
 
+  # =========================================================================
+  # GOOGLE WORKSPACE — Drive (vault canon) + Calendar. CRITICAL PATH.
+  # The thin-shim architecture pulls LIBRE-HOT.md + CONTEXT.md live from here,
+  # so this server MUST be connected at startup. `startup: false` REMOVED.
+  # Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
+  # Jarvis/:    1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
+  # Modes/:     1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
+  # =========================================================================
   google_workspace:
     type: streamable-http
     url: "https://googleworkspacemcp-production-73bd.up.railway.app/mcp"
-    startup: false
     timeout: 30000
+    initTimeout: 15000
     serverInstructions: >
       Google Workspace tools for Drive and Calendar access.
       Drive contains Zachary's Obsidian vault with Jarvis system files.
+      Always-on (app-level) so the Context Floor (skill §2a) can pull
+      Jarvis/LIBRE-HOT.md (hot tier) and Jarvis/CONTEXT.md (depth) every session.
       Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
       Jarvis/: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
       Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
 
+  # =========================================================================
+  # SUPERMEMORY — Semantic recall. Per-user OAuth, so startup:false is kept.
+  # Degrades silently (skill §10) — supplements, never critical-path.
+  # =========================================================================
   supermemory:
     type: streamable-http
     url: "https://mcp.supermemory.ai/mcp"
@@ -122,74 +156,3 @@ mcpServers:
       cross-session context. Supplements Notion databases with fuzzy
       similarity matching. Never replace canonical data — only supplement.
       If recalled memory contradicts flat file state, trust the flat file.
-
-  # =========================================================================
-  # SUPERMEMORY — Semantic recall across sessions
-  # Commented out until SSE endpoint is confirmed
-  # =========================================================================
-  # supermemory:
-  #   type: stdio
-  #   command: npx
-  #   args:
-  #     - -y
-  #     - "supermemory-mcp"
-  #   env:
-  #     SUPERMEMORY_API_KEY: "${SUPERMEMORY_API_KEY}"
-  #   timeout: 15000
-  #   initTimeout: 10000
-  #   serverInstructions: >
-  #     Semantic memory layer for Jarvis. Container: sm_project_jarvis.
-  #     Supplements Notion databases with fuzzy similarity matching.
-
-  # =========================================================================
-  # GOOGLE DRIVE — Vault file access (uncomment when OAuth ready)
-  # Folder IDs:
-  #   Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
-  #   Jarvis/:    1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
-  #   Modes/:     1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
-  # =========================================================================
-  # google-drive:
-  #   type: sse
-  #   url: "https://mcp.google.com/sse"
-  #   oauth:
-  #     redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/google-drive/oauth/callback"
-  #   serverInstructions: >
-  #     Zachary's Obsidian vault (APS Interact Sync G Drive) on Google Drive.
-  #     Contains Jarvis system files (CLAUDE.md, CONTEXT.md, MODES.md,
-  #     KNOWLEDGE.md, MEMORY.md, WORKING-WITH-ME.md, MENTAL-MODELS.md,
-  #     ENGINEERING.md, Modes/*.md), planning files, and project files.
-  #     Vault root folder ID: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
-  #     Jarvis/ folder ID: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
-  #     Modes/ folder ID: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
-  #   timeout: 30000
-  #   initTimeout: 15000
-
-  # =========================================================================
-  # GOOGLE CALENDAR — Meeting awareness, scheduling (uncomment when ready)
-  # =========================================================================
-  # google-calendar:
-  #   type: sse
-  #   url: "https://mcp.google.com/sse"
-  #   oauth:
-  #     redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/google-calendar/oauth/callback"
-  #   serverInstructions: >
-  #     Zachary's Google Calendar. Use for meeting awareness in /morning,
-  #     scheduling context, and 1:1 prep timing.
-  #   timeout: 30000
-  #   initTimeout: 15000
-
-  # =========================================================================
-  # FILESYSTEM — Direct vault access (if mounted into container)
-  # =========================================================================
-  # filesystem:
-  #   type: stdio
-  #   command: npx
-  #   args:
-  #     - -y
-  #     - "@modelcontextprotocol/server-filesystem"
-  #     - "/app/vault"
-  #   timeout: 15000
-  #   initTimeout: 10000
-  #   serverInstructions: >
-  #     Zachary's Obsidian vault mounted at /app/vault. Read-only for
-  #     context loading. Contains all Jarvis system files and planning docs.
