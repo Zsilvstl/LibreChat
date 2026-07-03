@@ -108,12 +108,18 @@ mcpServers:
     oauth:
       redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/notion/oauth/callback"
     serverInstructions: >
-      Zachary's Notion workspace containing 14 Jarvis operational databases:
-      Active Priorities, Active Board, People Directory, People Tracker,
-      Arcs, Decisions, Relationship Dynamics, Succession Pipeline, Deliverables,
-      Mental Models, Capture Inbox, Quotes, Episodic Archive, and
-      Self-Leadership Learnings. Use NOTION-OPS.md patterns for database IDs
-      and queries.
+      Zachary's Notion workspace containing 16 Jarvis operational databases:
+      Active Priorities, Active Board (tasks + Direction obligation rows —
+      People Tracker merged 2026-07-03; NEVER write to the archived People
+      Tracker DB debd4672...), People Directory, Arcs, Decisions, Relationship
+      Dynamics, Succession Pipeline, Deliverables, Mental Models, Capture Inbox,
+      Quotes, Episodic Archive, Self-Leadership Learnings, Artifact Registry,
+      Standing Cadences, and Vendor and Tool Stack. Obligation views on Active
+      Board (b129fe54080b4217a5bdeb0b05ef3c5b): What I Owe
+      v=392fca554f2b81f19d9e000cbf81c13a, What's Owed to Me
+      v=392fca554f2b8192b7c2000ceefa1526, By Direction
+      v=392fca554f2b81a4ab65000cbf3c6686. Use NOTION-OPS.md patterns for
+      database IDs and queries.
     timeout: 30000
     initTimeout: 10000
 
