@@ -335,6 +335,10 @@ mcpServers:
       time-sensitive flags (P0/P1) as unverified until Drive is reachable.
 
   supermemory:
+    # `startup: false` removed 2026-08-20. With it set, supermemory was excluded from
+    # app-level connections (ConnectionsRepository.isAllowedToConnectToServer): it sat
+    # disconnected with initDuration 0 and requiresOAuth false, so the UI offered no
+    # auth flow either. Same fix applied to google_workspace in May.
     type: streamable-http
     url: 'https://mcp.supermemory.ai/mcp'
     oauth:
