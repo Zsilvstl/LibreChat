@@ -178,7 +178,7 @@ endpoints:
 # -----------------------------------------------------------------------------
 skillSync:
   github:
-    enabled: false   # flip to true once GITHUB_SKILLS_TOKEN exists on Railway
+    enabled: true
     intervalMinutes: 60
     runOnStartup: true
     sources:
