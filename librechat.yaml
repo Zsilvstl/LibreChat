@@ -337,7 +337,6 @@ mcpServers:
   supermemory:
     type: streamable-http
     url: 'https://mcp.supermemory.ai/mcp'
-    startup: false
     oauth:
       redirect_uri: 'https://librechat-production-a9cd.up.railway.app/api/mcp/supermemory/oauth/callback'
     timeout: 15000
