@@ -179,7 +179,7 @@ endpoints:
 # -----------------------------------------------------------------------------
 skillSync:
   github:
-    enabled: true
+    enabled: false   # flip to true once GITHUB_SKILLS_TOKEN exists on Railway
     intervalMinutes: 60
     runOnStartup: true
     sources:
@@ -255,31 +255,34 @@ webSearch:
 # opens when Zach opens the app on his phone. `enforce: false` keeps every other
 # model one click away.
 # -----------------------------------------------------------------------------
-modelSpecs:
-  enforce: false
-  prioritize: true
-  list:
-    - name: 'jarvis'
-      label: 'JARVIS'
-      default: true
-      description: 'Strategic thought partner. Full vault canon, Notion action layer, Jarvis mode dispatch.'
-      iconURL: 'https://raw.githubusercontent.com/Zsilvstl/jarvis-skills/main/assets/jarvis.png'
-      showIconInMenu: true
-      showIconInHeader: true
-      preset:
-        endpoint: 'agents'
-        # Replace with the persisted JARVIS agent id after first save.
-        # The agent — not this spec — carries the skill allowlist and MCP servers.
-        agent_id: 'REPLACE_WITH_JARVIS_AGENT_ID'
-        greeting: |
-          Context Floor loading. What are we working on?
-
-    - name: 'jarvis-fast'
-      label: 'JARVIS (fast)'
-      description: 'Same identity, cheaper model. Capture, lookups, quick reads.'
-      preset:
-        endpoint: 'agents'
-        agent_id: 'REPLACE_WITH_JARVIS_FAST_AGENT_ID'
+# DISABLED until the JARVIS agent IDs exist. A default modelSpec whose agent_id
+# does not resolve makes the app open onto a spec that cannot load an agent.
+# Uncomment, fill in the two real IDs, redeploy.
+# modelSpecs:
+#   enforce: false
+#   prioritize: true
+#   list:
+#     - name: 'jarvis'
+#       label: 'JARVIS'
+#       default: true
+#       description: 'Strategic thought partner. Full vault canon, Notion action layer, Jarvis mode dispatch.'
+#       iconURL: 'https://raw.githubusercontent.com/Zsilvstl/jarvis-skills/main/assets/jarvis.png'
+#       showIconInMenu: true
+#       showIconInHeader: true
+#       preset:
+#         endpoint: 'agents'
+#         # Replace with the persisted JARVIS agent id after first save.
+#         # The agent — not this spec — carries the skill allowlist and MCP servers.
+#         agent_id: 'REPLACE_WITH_JARVIS_AGENT_ID'
+#         greeting: |
+#           Context Floor loading. What are we working on?
+#
+#     - name: 'jarvis-fast'
+#       label: 'JARVIS (fast)'
+#       description: 'Same identity, cheaper model. Capture, lookups, quick reads.'
+#       preset:
+#         endpoint: 'agents'
+#         agent_id: 'REPLACE_WITH_JARVIS_FAST_AGENT_ID'
 
 # =============================================================================
 # MCP SERVERS
