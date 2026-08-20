@@ -1,11 +1,16 @@
 import { PrincipalType } from 'librechat-data-provider';
-import { logger, mergeConfigOverrides, BASE_CONFIG_PRINCIPAL_ID } from '@librechat/data-schemas';
-import type { Types } from 'mongoose';
+import {
+  logger,
+  getTenantId,
+  mergeConfigOverrides,
+  BASE_CONFIG_PRINCIPAL_ID,
+} from '@librechat/data-schemas';
 import type { AppConfig, IConfig } from '@librechat/data-schemas';
+import type { Types } from 'mongoose';
 
 const BASE_CONFIG_KEY = '_BASE_';
 
-const DEFAULT_OVERRIDE_CACHE_TTL = 60_000;
+export const DEFAULT_OVERRIDE_CACHE_TTL = 60_000;
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -43,6 +48,15 @@ export interface AppConfigServiceDeps {
   overrideCacheTtl?: number;
 }
 
+export interface GetAppConfigOptions {
+  role?: string;
+  userId?: string;
+  tenantId?: string;
+  refresh?: boolean;
+  /** When true, return only the YAML-derived base config — no DB override queries. */
+  baseOnly?: boolean;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 let _strictOverride: boolean | undefined;
@@ -50,23 +64,19 @@ function isStrictOverrideMode(): boolean {
   return (_strictOverride ??= process.env.TENANT_ISOLATION_STRICT === 'true');
 }
 
-/** @internal Resets the cached strict-override flag. Exposed for test teardown only. */
 let _warnedNoTenantInStrictMode = false;
 
+/** @internal Resets the memoized strict-override flag and one-time no-tenantId warning gate. Exposed for test teardown only. */
 export function _resetOverrideStrictCache(): void {
   _strictOverride = undefined;
   _warnedNoTenantInStrictMode = false;
 }
 
 function overrideCacheKey(role?: string, userId?: string, tenantId?: string): string {
-  const tenant = tenantId || '__default__';
-  if (!tenantId && isStrictOverrideMode() && !_warnedNoTenantInStrictMode) {
-    _warnedNoTenantInStrictMode = true;
-    logger.warn(
-      '[overrideCacheKey] No tenantId in strict mode — falling back to __default__. ' +
-        'This likely indicates a code path that bypasses the tenant context middleware.',
-    );
-  }
+  // Fall back to the ALS tenant context before `__default__`: callers that rely on the
+  // tenant middleware (the common path) pass no explicit tenantId, so without this the
+  // entry is keyed under the shared `__default__` bucket and leaks across tenants.
+  const tenant = tenantId || getTenantId() || '__default__';
   if (userId && role) {
     return `_OVERRIDE_:${tenant}:${role}:${userId}`;
   }
@@ -81,7 +91,11 @@ function overrideCacheKey(role?: string, userId?: string, tenantId?: string): st
 
 // ── Service factory ──────────────────────────────────────────────────
 
-export function createAppConfigService(deps: AppConfigServiceDeps) {
+export function createAppConfigService(deps: AppConfigServiceDeps): {
+  getAppConfig: (options?: GetAppConfigOptions) => Promise<AppConfig>;
+  clearAppConfigCache: () => Promise<void>;
+  clearOverrideCache: (tenantId?: string) => Promise<void>;
+} {
   const {
     loadBaseConfig,
     setCachedTools,
@@ -142,16 +156,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
    * `role`, `userId`, and `tenantId` are ignored in this mode.
    * Use this for startup, auth strategies, and other pre-tenant code paths.
    */
-  async function getAppConfig(
-    options: {
-      role?: string;
-      userId?: string;
-      tenantId?: string;
-      refresh?: boolean;
-      /** When true, return only the YAML-derived base config — no DB override queries. */
-      baseOnly?: boolean;
-    } = {},
-  ): Promise<AppConfig> {
+  async function getAppConfig(options: GetAppConfigOptions = {}): Promise<AppConfig> {
     const { role, userId, tenantId, refresh, baseOnly } = options;
 
     const baseConfig = await ensureBaseConfig(refresh);
@@ -168,8 +173,32 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
       }
     }
 
+    const principals = await buildPrincipals(role, userId).catch((error: unknown) => {
+      logger.error('[getAppConfig] Error building principals, falling back to base:', error);
+      return null;
+    });
+    if (principals === null) {
+      return baseConfig;
+    }
+
+    // Strict isolation + no tenant anywhere (neither param nor ALS) is pathological: a
+    // middleware bypass or an unauthenticated startup call. Pre-tenant calls should use
+    // baseOnly:true and admin calls carry an explicit tenantId. Return the base config
+    // without caching it under the shared `__default__` bucket. When ALS has a tenant,
+    // overrideCacheKey scopes the key to it, so we fall through and cache per-tenant.
+    if (principals.length === 0 && !tenantId && !getTenantId() && isStrictOverrideMode()) {
+      return baseConfig;
+    }
+
+    if (!tenantId && !getTenantId() && isStrictOverrideMode() && !_warnedNoTenantInStrictMode) {
+      _warnedNoTenantInStrictMode = true;
+      logger.warn(
+        '[getAppConfig] No tenantId in strict mode — falling back to __default__. ' +
+          'This likely indicates a code path that bypasses the tenant context middleware.',
+      );
+    }
+
     try {
-      const principals = await buildPrincipals(role, userId);
       const configs = await getApplicableConfigs(principals);
 
       if (configs.length === 0) {

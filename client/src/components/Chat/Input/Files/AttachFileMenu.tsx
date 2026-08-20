@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { useRecoilState } from 'recoil';
 import * as Ariakit from '@ariakit/react';
 import {
@@ -19,6 +19,7 @@ import {
   Providers,
   EToolResources,
   EModelEndpoint,
+  isPermissiveMimeConfig,
   defaultAgentCapabilities,
   bedrockDocumentExtensions,
   isDocumentSupportedProvider,
@@ -33,6 +34,7 @@ import {
   useLocalize,
 } from '~/hooks';
 import { useSharePointFileHandlingNoChatContext } from '~/hooks/Files/useSharePointFileHandling';
+import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
 import { SharePointPickerDialog } from '~/components/SharePoint';
 import { useGetStartupConfig } from '~/data-provider';
 import { ephemeralAgentByConvoId } from '~/store';
@@ -77,10 +79,12 @@ const AttachFileMenu = ({
   const isUploadDisabled = disabled ?? false;
   const inputRef = useRef<HTMLInputElement>(null);
   const [isPopoverActive, setIsPopoverActive] = useState(false);
+  const uploadFileTooltip = useShortcutHint('uploadFile', localize('com_sidepanel_attach_files'));
+  const uploadFileAriaKey = useShortcutAriaKey('uploadFile');
   const [ephemeralAgent, setEphemeralAgent] = useRecoilState(
     ephemeralAgentByConvoId(conversationId),
   );
-  const [toolResource, setToolResource] = useState<EToolResources | undefined>();
+  const toolResourceRef = useRef<EToolResources | undefined>();
   const { handleFileChange } = useFileHandlingNoChatContext(undefined, {
     files,
     setFiles,
@@ -89,7 +93,7 @@ const AttachFileMenu = ({
   });
   const { handleSharePointFiles, isProcessing, downloadProgress } =
     useSharePointFileHandlingNoChatContext(
-      { toolResource },
+      { toolResource: toolResourceRef.current },
       { files, setFiles, setFilesLoading, conversation },
     );
 
@@ -110,29 +114,41 @@ const AttachFileMenu = ({
     ephemeralAgent,
   );
 
-  const handleUploadClick = (fileType?: FileUploadType) => {
-    if (!inputRef.current) {
-      return;
-    }
-    inputRef.current.value = '';
-    if (fileType === 'image') {
-      inputRef.current.accept = 'image/*,.heif,.heic';
-    } else if (fileType === 'document') {
-      inputRef.current.accept = '.pdf,application/pdf';
-    } else if (fileType === 'image_document') {
-      inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf';
-    } else if (fileType === 'image_document_extended') {
-      inputRef.current.accept = `image/*,.heif,.heic,${bedrockDocumentExtensions}`;
-    } else if (fileType === 'image_document_video_audio') {
-      inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf,video/*,audio/*';
-    } else {
+  const handleUploadClick = useCallback(
+    (fileType?: FileUploadType) => {
+      if (!inputRef.current) {
+        return;
+      }
+      inputRef.current.value = '';
+      if (
+        fileType !== undefined &&
+        isPermissiveMimeConfig(endpointFileConfig?.supportedMimeTypes)
+      ) {
+        inputRef.current.accept = '';
+      } else if (fileType === 'image') {
+        inputRef.current.accept = 'image/*,.heif,.heic';
+      } else if (fileType === 'document') {
+        inputRef.current.accept = '.pdf,application/pdf';
+      } else if (fileType === 'image_document') {
+        inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf';
+      } else if (fileType === 'image_document_extended') {
+        inputRef.current.accept = `image/*,.heif,.heic,${bedrockDocumentExtensions}`;
+      } else if (fileType === 'image_document_video_audio') {
+        inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf,video/*,audio/*';
+      } else {
+        inputRef.current.accept = '';
+      }
+      inputRef.current.click();
       inputRef.current.accept = '';
-    }
-    inputRef.current.click();
-    inputRef.current.accept = '';
-  };
+    },
+    [endpointFileConfig?.supportedMimeTypes],
+  );
 
   const dropdownItems = useMemo(() => {
+    const setToolResource = (value: EToolResources | undefined) => {
+      toolResourceRef.current = value;
+    };
+
     const createMenuItems = (onAction: (fileType?: FileUploadType) => void) => {
       const items: MenuItemProps[] = [];
 
@@ -144,7 +160,9 @@ const AttachFileMenu = ({
       }
 
       const isAzureWithResponsesApi =
-        currentProvider === EModelEndpoint.azureOpenAI && useResponsesApi;
+        (currentProvider === EModelEndpoint.azureOpenAI ||
+          endpointType === EModelEndpoint.azureOpenAI) &&
+        useResponsesApi === true;
 
       if (
         isDocumentSupportedProvider(endpointType) ||
@@ -207,7 +225,7 @@ const AttachFileMenu = ({
 
       if (capabilities.codeEnabled && codeAllowedByAgent) {
         items.push({
-          label: localize('com_ui_upload_code_files'),
+          label: localize('com_ui_upload_code_environment'),
           onClick: () => {
             setToolResource(EToolResources.execute_code);
             setEphemeralAgent((prev) => ({
@@ -247,7 +265,7 @@ const AttachFileMenu = ({
     endpointType,
     capabilities,
     useResponsesApi,
-    setToolResource,
+    handleUploadClick,
     setEphemeralAgent,
     sharePointEnabled,
     codeAllowedByAgent,
@@ -262,6 +280,7 @@ const AttachFileMenu = ({
           disabled={isUploadDisabled}
           id="attach-file-menu-button"
           aria-label="Attach File Options"
+          aria-keyshortcuts={uploadFileAriaKey}
           className={cn(
             'flex size-9 items-center justify-center rounded-full p-1 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-opacity-50',
             isPopoverActive && 'bg-surface-hover',
@@ -273,7 +292,7 @@ const AttachFileMenu = ({
         </Ariakit.MenuButton>
       }
       id="attach-file-menu-button"
-      description={localize('com_sidepanel_attach_files')}
+      description={uploadFileTooltip}
       disabled={isUploadDisabled}
     />
   );
@@ -291,7 +310,8 @@ const AttachFileMenu = ({
       <FileUpload
         ref={inputRef}
         handleFileChange={(e) => {
-          handleFileChange(e, toolResource);
+          handleFileChange(e, toolResourceRef.current);
+          toolResourceRef.current = undefined;
         }}
       >
         <DropdownPopup
