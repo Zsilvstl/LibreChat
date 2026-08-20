@@ -1,112 +1,302 @@
-version: 1.3.5
+# =============================================================================
+# JARVIS LibreChat Configuration — v3 DRAFT 2026-08-19
+# Target app version: LibreChat v0.8.7 (config schema 1.3.13)
+#
+# WHY v3 EXISTS
+#   The deployed fork (Zsilvstl/LibreChat @ main) is LibreChat v0.8.4 and sits
+#   1,073 commits behind danny-avila/LibreChat:main. The fork's ONLY divergence
+#   is 20 commits touching a single file — librechat.yaml. There is zero source
+#   divergence, so syncing the fork is a low-risk operation (see the runbook).
+#
+#   Everything below the "=== v0.8.5+ CAPABILITIES ===" line REQUIRES the
+#   upgrade. Do not deploy this file against v0.8.4 — unknown keys are ignored
+#   or rejected depending on the section, and skills/skillSync will silently
+#   do nothing.
+#
+# WHAT CHANGED vs librechat.corrected.yaml (deployed) and librechat.v2.yaml (never deployed)
+#   Carried forward from v2 (still not deployed as of 2026-08-19):
+#     1. supermemory initTimeout — slow OAuth handshake fails fast
+#     2. summarize + summaryModel — compress long sessions instead of truncating
+#     3. dropped empty privacyPolicy / termsOfService stubs
+#     4. fileConfig — enables the RAG fallback store for LIBRE-HOT.md/CONTEXT.md
+#   New in v3:
+#     5. endpoints.agents.capabilities — explicit capability allowlist, opts in
+#        to skills / subagents / execute_code / web_search / artifacts / memory
+#     6. skillSync.github — mirrors the jarvis-skills repo into LibreChat
+#        Skills on a 60-minute loop. This is the mechanism that finally kills
+#        the "re-paste the stable layer" chore.
+#     7. memory — LibreChat-native user memory, scoped so it supplements
+#        rather than competes with Supermemory
+#     8. webSearch — first-class search rather than model-side guessing
+#     9. modelSpecs — JARVIS becomes a named, branded, default spec instead of
+#        an imported preset the user has to remember to select
+#    10. model list refreshed to current frontier (Opus 5 / Sonnet 5 / GPT-5.6
+#        / Gemini 3.7) — verify each slug against OpenRouter before deploy
+#
+# DEPLOY ORDER
+#   1. Sync the fork to upstream v0.8.7 (see LIBRECHAT-UPGRADE-RUNBOOK.md)
+#   2. Push this file as librechat.yaml on the fork
+#   3. Set the new Railway env vars (GITHUB_SKILLS_TOKEN, SERPER_API_KEY,
+#      JINA_API_KEY, LIBRECHAT_CODE_API_KEY) BEFORE the deploy completes
+#   4. Redeploy, then run the smoke test in the runbook
+# =============================================================================
+
+version: 1.3.13
 cache: true
 
-# =============================================================================
-# JARVIS LibreChat Configuration — CORRECTED 2026-05-31
-# Multi-model access via OpenRouter + MCP integrations
-# Transport: streamable-http (NOT SSE — see note below)
-#
-# CHANGES vs the deployed version:
-#   1. google_workspace: removed `startup: false` so the Drive/Calendar MCP
-#      connects at app startup instead of requiring a manual per-session
-#      reconnect. This is the likely root cause of "Drive context not loading."
-#      (Code ref: ConnectionsRepository.isAllowedToConnectToServer — a server
-#       with startup:false is EXCLUDED from app-level connections.)
-#      google_workspace has no oauth: block and no user vars, so its auth is
-#      handled server-side on Railway → safe to auto-init at startup.
-#   2. Fixed the stale "SSE-based" header comment — all active servers are
-#      already streamable-http. No SSE migration is needed (that rec is moot).
-#   3. supermemory: left startup:false (it uses per-user OAuth) but annotated.
-#      It degrades silently per the skill's §10, so it is not critical-path.
-#
-# TEST AFTER DEPLOY: open a fresh session, run /jarvis, confirm the Context
-# Receipt shows "Vault canon: loaded" WITHOUT a manual MCP reconnect.
-# =============================================================================
-
+# -----------------------------------------------------------------------------
+# MCP allowlist — unchanged except that skill sync needs no domain entry
+# (it is a server-side GitHub API call, not an MCP transport).
+# -----------------------------------------------------------------------------
 mcpSettings:
   allowedDomains:
-    - "mcp.notion.com"
-    - "mcp.supermemory.ai"
-    - "googleworkspacemcp-production-73bd.up.railway.app"
+    - 'mcp.notion.com'
+    - 'mcp.supermemory.ai'
+    - 'googleworkspacemcp-production-73bd.up.railway.app'
+
 speech:
   stt:
     openai:
-      url: "https://api.openai.com/v1/audio"
-      apiKey: "${OPENAI_STT_KEY}"
-      model: "whisper-1"
+      url: 'https://api.openai.com/v1/audio'
+      apiKey: '${OPENAI_STT_KEY}'
+      model: 'whisper-1'
   tts:
     openai:
-      url: "https://api.openai.com/v1/audio"
-      apiKey: "${OPENAI_TTS_KEY}"
-      model: "tts-1"
+      url: 'https://api.openai.com/v1/audio'
+      apiKey: '${OPENAI_TTS_KEY}'
+      model: 'tts-1'
       voices:
-        - "onyx"
-        - "alloy"
-        - "echo"
-        - "fable"
-        - "nova"
-        - "shimmer"
-
-interface:
-  privacyPolicy:
-    externalUrl: ""
-  termsOfService:
-    externalUrl: ""
+        - 'onyx'
+        - 'alloy'
+        - 'echo'
+        - 'fable'
+        - 'nova'
+        - 'shimmer'
 
 registration:
   socialLogins: []
   allowedDomains:
-    - "gmail.com"
+    - 'gmail.com'
+
+# -----------------------------------------------------------------------------
+# FILE CONFIG — RAG fallback store for the vault hot tier.
+# google_workspace is still the single point of failure for LIBRE-HOT.md +
+# CONTEXT.md. Attach synced copies to the JARVIS agent so a Drive outage
+# degrades to "stale but functional" instead of "identity intact, state blind."
+# Raised from v2's 5 MB/10 files to accommodate skill bundle uploads.
+# -----------------------------------------------------------------------------
+fileConfig:
+  endpoints:
+    default:
+      fileLimit: 20
+      fileSizeLimit: 10
+      totalSizeLimit: 100
+      supportedMimeTypes:
+        - 'text/markdown'
+        - 'text/plain'
+        - 'application/pdf'
+        - 'application/zip'
+  serverFileSizeLimit: 100
+  avatarSizeLimit: 2
 
 # =============================================================================
-# MODEL ACCESS — all models route through OpenRouter (single custom endpoint).
-# FAILOVER NOTE: LibreChat has no native model-failover feature, but because
-# every model already goes through OpenRouter, provider-level outages are
-# absorbed by OpenRouter's own routing. To add explicit model-level fallback
-# (e.g., Opus -> GPT-5.4 -> Gemini), configure it on the OpenRouter side
-# (account routing preferences / request `models` array), NOT here. So the
-# "OpenAI down = LibreChat dead" failure mode is already largely mitigated.
+# === v0.8.5+ CAPABILITIES ====================================================
+# Everything below this line requires the fork to be synced past v0.8.4.
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# AGENT CAPABILITIES — explicit allowlist.
+# Omitting this block means "defaults," which is fine, but being explicit makes
+# the capability surface reviewable and makes it obvious what a future upgrade
+# added. `skills` and `subagents` are the two that change JARVIS structurally.
+#
+# NOT enabled on purpose:
+#   - `ocr`        — no current use case; add when transcript PDFs start arriving
+#   - `chain`      — subagents cover the delegation need with less config
+#   - `ask_user_question` / `stateful_code_sessions` — v0.8.8 only, add later
+# -----------------------------------------------------------------------------
 endpoints:
+  agents:
+    recursionLimit: 50
+    maxCitations: 30
+    capabilities:
+      - 'skills'          # SKILL.md instruction bundles — the headline feature
+      - 'subagents'       # isolated child runs; keeps deep-dive noise out of parent context
+      - 'deferred_tools'  # lazy MCP tool discovery — cuts boot token cost
+      - 'execute_code'    # Code Interpreter; also mounts skill files at /mnt/data/skills/
+      - 'file_search'     # RAG over agent-attached files (the LIBRE-HOT.md fallback)
+      - 'web_search'
+      - 'artifacts'       # HTML briefs rendered in-chat instead of as a wall of markdown
+      - 'actions'
+      - 'context'
+      - 'memory'
+      - 'tools'
+
   custom:
-    - name: "OpenRouter"
-      apiKey: "${OPENROUTER_KEY}"
-      baseURL: "https://openrouter.ai/api/v1"
+    - name: 'OpenRouter'
+      apiKey: '${OPENROUTER_KEY}'
+      baseURL: 'https://openrouter.ai/api/v1'
+      # VERIFY these slugs against https://openrouter.ai/models before deploy.
+      # Model naming drifts faster than this file does.
       models:
         default:
-          - "anthropic/claude-opus-4.6"
-          - "anthropic/claude-sonnet-4.6"
-          - "anthropic/claude-haiku-4.5"
-          - "openai/gpt-5.4"
-          - "openai/gpt-5.4-nano"
-          - "openai/gpt-5.3-codex"
-          - "google/gemini-3.1-pro"
-          - "google/gemini-3.1-flash-lite"
-          - "google/gemini-3-flash-preview"
+          - 'anthropic/claude-opus-5'
+          - 'anthropic/claude-sonnet-5'
+          - 'anthropic/claude-haiku-4.5'
+          - 'openai/gpt-5.6'
+          - 'google/gemini-3.7-pro'
+          - 'google/gemini-3.6-flash'
+          - 'google/gemini-3.5-flash-lite'
         fetch: true
       titleConvo: true
-      titleModel: "google/gemini-3.1-flash-lite"
-      summarize: false
+      titleModel: 'google/gemini-3.5-flash-lite'
+      summarize: true
+      summaryModel: 'google/gemini-3.5-flash-lite'
       forcePrompt: false
       dropParams:
-        - "stop"
-        - "user"
-      modelDisplayLabel: "OpenRouter"
-      iconURL: "https://openrouter.ai/favicon.ico"
+        - 'stop'
+        - 'user'
+      modelDisplayLabel: 'OpenRouter'
+      iconURL: 'https://openrouter.ai/favicon.ico'
+
+# -----------------------------------------------------------------------------
+# GITHUB SKILL SYNC — the structural fix.
+#
+# Today the "stable layer" (identity, frameworks, dispatch table, Notion schema)
+# lives in a 37 KB paste-in that must be manually re-pasted whenever canon
+# changes. Skill sync replaces that with a pull: push to the jarvis-skills repo,
+# LibreChat mirrors it within the hour, every agent sees it.
+#
+# Repo layout expected (see jarvis-skills/ in this folder):
+#   skills/
+#     jarvis-boot/SKILL.md        (always-apply: true — the Context Floor)
+#     jarvis-prep/SKILL.md
+#     jarvis-morning/SKILL.md
+#     ... one directory per Jarvis mode
+#
+# skillDiscoveryDepth: 2 means LibreChat walks `skills/<name>/SKILL.md`.
+# Use a fine-grained PAT with read-only Contents + Metadata on that repo ONLY.
+# -----------------------------------------------------------------------------
+skillSync:
+  github:
+    enabled: true
+    intervalMinutes: 60
+    runOnStartup: true
+    sources:
+      - id: jarvis-skills
+        owner: Zsilvstl
+        repo: jarvis-skills
+        ref: main
+        paths:
+          - skills
+        skillDiscoveryDepth: 2
+        token: '${GITHUB_SKILLS_TOKEN}'
+
+# -----------------------------------------------------------------------------
+# MEMORY — LibreChat-native, deliberately narrow.
+#
+# Supermemory remains the semantic recall layer and the vault remains canon.
+# This exists only for the thin band Supermemory handles badly: durable
+# preferences and interaction corrections that should apply on turn one without
+# a recall round-trip. Keep `personalize: true` so it stays user-controllable.
+#
+# The validKeys list is the guardrail — it prevents LibreChat's memory agent
+# from quietly building a competing (and staler) copy of CONTEXT.md.
+# -----------------------------------------------------------------------------
+memory:
+  disabled: false
+  validKeys:
+    - 'preferences'       # output format, tone, brevity, artifact defaults
+    - 'working_style'     # how Zach wants pushback delivered, when to ask vs. decide
+    - 'corrections'       # standing "stop doing X" instructions
+  tokenLimit: 2000
+  charLimit: 10000
+  personalize: true
+  messageWindowSize: 6
+  agent:
+    # REQUIRED. Without `enabled: true` the memory agent never runs and this
+    # whole block is inert — it fails silently, not loudly.
+    enabled: true
+    provider: 'OpenRouter'
+    model: 'google/gemini-3.5-flash-lite'
+    instructions: >
+      Store ONLY durable operating preferences, working-style guidance, and
+      explicit corrections Zachary gives about how you should respond.
+      NEVER store: people state, priorities, flags, commitments, decisions,
+      meeting content, or business facts. Those are canon and live in the
+      vault (LIBRE-HOT.md / CONTEXT.md) and Notion. Storing them here creates
+      a second source of truth that will go stale and contradict canon.
+      When in doubt, do not store.
+    model_parameters:
+      temperature: 0.1
+
+# -----------------------------------------------------------------------------
+# WEB SEARCH — Serper for search, Jina for scrape + rerank.
+# Replaces "the model guesses from training data" for market/competitor/vendor
+# questions. Cheap and materially changes /research quality.
+# -----------------------------------------------------------------------------
+webSearch:
+  serperApiKey: '${SERPER_API_KEY}'
+  searchProvider: 'serper'
+  # Serper doubles as the scraper so there is only one search vendor to manage.
+  # Switch to 'firecrawl' (and add FIRECRAWL_API_KEY) if extraction quality lags
+  # on JS-heavy pages.
+  scraperProvider: 'serper'
+  jinaApiKey: '${JINA_API_KEY}'
+  rerankerType: 'jina'
+  scraperTimeout: 7500
+  safeSearch: 1
+
+# -----------------------------------------------------------------------------
+# MODEL SPECS — JARVIS as a first-class, default, branded entry point.
+#
+# Today JARVIS is an imported preset: selectable, forgettable, and easy to start
+# a conversation without. As a model spec with `default: true` it becomes what
+# opens when Zach opens the app on his phone. `enforce: false` keeps every other
+# model one click away.
+# -----------------------------------------------------------------------------
+modelSpecs:
+  enforce: false
+  prioritize: true
+  list:
+    - name: 'jarvis'
+      label: 'JARVIS'
+      default: true
+      description: 'Strategic thought partner. Full vault canon, Notion action layer, Jarvis mode dispatch.'
+      iconURL: 'https://raw.githubusercontent.com/Zsilvstl/jarvis-skills/main/assets/jarvis.png'
+      showIconInMenu: true
+      showIconInHeader: true
+      preset:
+        endpoint: 'agents'
+        # Replace with the persisted JARVIS agent id after first save.
+        # The agent — not this spec — carries the skill allowlist and MCP servers.
+        agent_id: 'REPLACE_WITH_JARVIS_AGENT_ID'
+        greeting: |
+          Context Floor loading. What are we working on?
+
+    - name: 'jarvis-fast'
+      label: 'JARVIS (fast)'
+      description: 'Same identity, cheaper model. Capture, lookups, quick reads.'
+      preset:
+        endpoint: 'agents'
+        agent_id: 'REPLACE_WITH_JARVIS_FAST_AGENT_ID'
 
 # =============================================================================
-# MCP SERVERS — streamable-http for Railway cloud deployment
+# MCP SERVERS
+# Unchanged in substance from the deployed config. Two notes:
+#   - `deferred_tools` (enabled above) means these servers' tool schemas are
+#     discovered lazily rather than injected at boot. This is a real token win
+#     now that Notion's MCP exposes ~30 tools.
+#   - The stray "Supermemory2" server visible in the running UI is a per-user
+#     addition, not from this file. It shows amber (unhealthy). Delete it in
+#     the UI — it is a duplicate of `supermemory`.
 # =============================================================================
-
 mcpServers:
-  # =========================================================================
-  # NOTION — Jarvis operational databases (Notion hosted MCP). OAuth on first use.
-  # =========================================================================
   notion:
     type: streamable-http
-    url: "https://mcp.notion.com/mcp"
+    url: 'https://mcp.notion.com/mcp'
     oauth:
-      redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/notion/oauth/callback"
+      redirect_uri: 'https://librechat-production-a9cd.up.railway.app/api/mcp/notion/oauth/callback'
     serverInstructions: >
       Zachary's Notion workspace containing 16 Jarvis operational databases:
       Active Priorities, Active Board (tasks + Direction obligation rows —
@@ -123,39 +313,33 @@ mcpServers:
     timeout: 30000
     initTimeout: 10000
 
-  # =========================================================================
-  # GOOGLE WORKSPACE — Drive (vault canon) + Calendar. CRITICAL PATH.
-  # The thin-shim architecture pulls LIBRE-HOT.md + CONTEXT.md live from here,
-  # so this server MUST be connected at startup. `startup: false` REMOVED.
-  # Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
-  # Jarvis/:    1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
-  # Modes/:     1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
-  # =========================================================================
   google_workspace:
     type: streamable-http
-    url: "https://googleworkspacemcp-production-73bd.up.railway.app/mcp"
+    url: 'https://googleworkspacemcp-production-73bd.up.railway.app/mcp'
     timeout: 30000
     initTimeout: 15000
     serverInstructions: >
       Google Workspace tools for Drive and Calendar access.
       Drive contains Zachary's Obsidian vault with Jarvis system files.
-      Always-on (app-level) so the Context Floor (skill §2a) can pull
+      Always-on (app-level) so the Context Floor can pull
       Jarvis/LIBRE-HOT.md (hot tier) and Jarvis/CONTEXT.md (depth) every session.
       Vault root: 1lkD-mp14cHp0-7IsGIu9b-Oth5GYKxV-
       Jarvis/: 1rbtlW4_J7lJ_yoqx-ORKP8Iv9uKekVMO
       Modes/: 1YLuyatpi5e4WfcEIr_vdY2NrzrjkOUcl
+      DEGRADED MODE: if this server is unavailable or a file read fails,
+      fall back to the RAG-attached copies of LIBRE-HOT.md and CONTEXT.md
+      on the JARVIS agent. When operating on the fallback, state it in the
+      Context Receipt as "Vault canon: RAG fallback (stale-risk)" and treat
+      time-sensitive flags (P0/P1) as unverified until Drive is reachable.
 
-  # =========================================================================
-  # SUPERMEMORY — Semantic recall. Per-user OAuth, so startup:false is kept.
-  # Degrades silently (skill §10) — supplements, never critical-path.
-  # =========================================================================
   supermemory:
     type: streamable-http
-    url: "https://mcp.supermemory.ai/mcp"
+    url: 'https://mcp.supermemory.ai/mcp'
     startup: false
     oauth:
-      redirect_uri: "https://librechat-production-a9cd.up.railway.app/api/mcp/supermemory/oauth/callback"
+      redirect_uri: 'https://librechat-production-a9cd.up.railway.app/api/mcp/supermemory/oauth/callback'
     timeout: 15000
+    initTimeout: 10000
     serverInstructions: >
       Semantic memory layer for Jarvis. Container: sm_project_jarvis.
       Use recall with containerTag "sm_project_jarvis" to retrieve
