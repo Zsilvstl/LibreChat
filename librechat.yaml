@@ -129,7 +129,6 @@ endpoints:
       - 'artifacts'       # HTML briefs rendered in-chat instead of as a wall of markdown
       - 'actions'
       - 'context'
-      - 'memory'
       - 'tools'
 
   custom:
